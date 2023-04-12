@@ -27,6 +27,24 @@ def get_api(url, params):
     return health_json
 
 
+def get_api(url, params):
+    r = requests.get(url, params)
+    health_json = r.json()
+    return health_json
+
+
+def cache_health_data(filename):
+    health_list = []
+    for i in range(2000,55000,10000):
+        base_url = 'https://chronicdata.cdc.gov/resource/cj8b-94cj.json'
+        where_clause = f'totalpopulation > {i}'
+        url = f"{base_url}?$where={urllib.parse.quote(where_clause)}"
+        group_result = get_api(url, None)
+        for dic in group_result:
+            health_list.append(dic)
+    write_json(filename, health_list)
+
+
 def get_lat(f_r, f_w):
     loc_list = load_json(f_r)
     state_d = {}
@@ -56,21 +74,27 @@ def get_lat(f_r, f_w):
             new_d[s_city[1][0]] = s_city[1][1][1]
         two_city_d[state] = new_d
     write_json(f_w, two_city_d)
+    return two_city_d
 
 
-def cache_weather(coor_list, filename):
+def cache_weather(two_city_d, weatherfile):
     weather_d = {}
-    base = "https://api.openweathermap.org/data/3.0/onecall/timemachine"
-    # for i in range(25):
-    for i in coor_list:
-        dic = {"lat":i[0], "lon":i[1], "dt":"1609520400", "appid":"0ed702778efe831f0e3d546dc34eece3"}
-        result = get_api(base, dic)
-        weather_d[(i[0],i[1])] = result["results"]
-    write_json(filename, weather_d)
+    base = "https://api.openweathermap.org/data/2.5/weather"
+    dic = {"lat":two_city_d["NY"]["New York"][0], "lon":two_city_d["NY"]["New York"][1], "dt":"1609520400", "appid":"0ed702778efe831f0e3d546dc34eece3"}
+    result = get_api(base, dic)
+    weather_d["New York"] = result
+    print(weather_d)
+
+    
+def get_api(url, params):
+    r = requests.get(url, params)
+    health_json = r.json()
+    return health_json
+
 
 def main():
-    loc_list = get_lat("health_data_r.json", "health_data.json")
-    # cache_weather(loc_list, "weather_data.json")
+    two_city_d = get_lat("health_data_r.json", "health_data.json")
+    # cache_weather(two_city_d, "weather_data.json")  
 
 
 if __name__ == "__main__":
