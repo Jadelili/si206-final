@@ -153,14 +153,33 @@ def make_weather_table(filename, cur, conn):
     conn.commit()
 
 
+def make_weather_table(filename, cur, conn):
+    weather = load_json(filename)
+    cur.execute("CREATE TABLE IF NOT EXISTS Weather (id INTEGER PRIMARY KEY, city_name TEXT, temp FLOAT, pressure FLOAT, clouds FLOAT)")
+
+    lst2 = []
+    for city in weather:
+        city_n = city
+        temp = round(weather[city]["temp_medium"], 2)
+        pressure = round(weather[city]["pressure_medium"], 2)
+        clouds = round(weather[city]["clouds_medium"], 2)
+        lst2.append((city_n, temp, pressure, clouds))
+        
+    for i in range(len(weather)):
+        # print(lst2[i][0])
+        cur.execute("INSERT OR IGNORE INTO Weather (id, city_name, temp, pressure, clouds) VALUES (?,?,?,?,?)",
+                    (i, lst2[i][0], lst2[i][1], lst2[i][2], lst2[i][3]))
+    conn.commit()
+
+
 
 def main():
     two_city_d = get_lat("health_data_r.json", "location_data.json")
     ### cache_weather_data(two_city_d, "weather_data_r.json")
     ### cache_weather_data(two_city_d, "weather_month_data_r.json")  
     ### process_weather_data("weather_data_r.json", "weather_data.json")
-    # cur, conn = open_database("weather.db")
-    # make_weather_table("weather_data.json", cur, conn)
+    cur, conn = open_database("Mental_health.db")
+    make_weather_table("weather_data.json", cur, conn)
 
 if __name__ == "__main__":
     main()
