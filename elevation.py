@@ -49,7 +49,7 @@ def cache_elevation_data(location_data, elevation_file):
             lon = round(coordinates[1], 3)
             params = {"locations": f"{lat},{lon}"}
             try:
-                result = get_api(f"{base_url}?locations={lat}|{lon}", params=None)
+                result = get_api(f"{base_url}?locations={lat},{lon}", params=None)
                 if result:
                     elevation_d[city] = result
                 else:

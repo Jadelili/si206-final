@@ -68,6 +68,7 @@ def get_lat(f_r, f_w):
         new_d[s_city[0][0]] = s_city[0][1][1]
         if len(s_city) > 1:
             new_d[s_city[1][0]] = s_city[1][1][1]
+            new_d[s_city[2][0]] = s_city[2][1][1]
         two_city_d[state] = new_d
     write_json(f_w, two_city_d)
     # print(two_city_d)
@@ -83,7 +84,6 @@ def cache_weather_data(two_city_d, weatherfile):
             dic = {"lat":two_city_d[state][city][0], "lon":two_city_d[state][city][1], "appid":"0ed702778efe831f0e3d546dc34eece3"}
             result = get_api(base, dic)
             d[city] = result
-            # weather_d[state] = d        # {state:{city:data, city2:data}}
             if state not in weather_d.keys():
                 weather_d[state] = d
             else:
@@ -96,40 +96,99 @@ def process_weather_data(weatherfile_r, weatherfile):
     lst = []
     weather_d = {}
     for state in weather_r:
+        city_d = {}
         for city in weather_r[state]:
             d = {}
             total_t_median = 0
             total_ps_median = 0
+            total_h_median = 0
             total_c_median = 0 
             count = 0
-            for i in weather_r[state][city].get("result",[]):
-                count += 1
-                total_t_median += i["temp"]["median"]
-                total_ps_median += i["pressure"]["median"]
-                total_c_median += i["clouds"]["median"]
-            if count >0:
-                t_avg = total_t_median / count
-                ps_avg = total_ps_median / count
-                c_avg = total_c_median / count
-            else:
-                t_avg = 0
-                ps_avg = 0
-                c_avg = 0
-            d["temp_medium"] = t_avg
-            d["pressure_medium"] = ps_avg
-            d["clouds_medium"] = c_avg
+            try: 
+                for i in weather_r[state][city]["result"]:
+                    if i["month"] in [11,12,1,2,3]: 
+                        count += 1
+                        total_t_median += i["temp"]["median"]
+                        total_ps_median += i["pressure"]["median"]
+                        total_h_median += i["humidity"]["median"]
+                        total_c_median += i["clouds"]["median"]
+                    t_avg = total_t_median / count
+                    ps_avg = total_ps_median / count
+                    hum_avg = total_h_median / count
+                    c_avg = total_c_median / count
 
-            if city not in list(weather_d.keys()):
-                weather_d[city] = d
-            elif city == "Portland":
-                weather_d["Portland_Maine"] = d
-            elif city == "Charleston":
-                weather_d["Charleston_WestVirginia"] = d
-            elif city == "Columbia":
-                weather_d["Columbia_Maryland"] = d
+                    d["temp_medium"] = t_avg
+                    d["pressure_medium"] = ps_avg
+                    d["humidity_medium"] = hum_avg
+                    d["clouds_medium"] = c_avg
+
+                    if city not in city_d.keys():
+                        city_d[city] = d
+                    elif state == "ME" and city == "Portland":
+                        city_d["Portland"] = d
+                    elif state == "WV" and city == "Charleston":
+                        city_d["Charleston"]= d
+                    elif state == "MD" and city == "Columbia":
+                        city_d["Columbia"] = d
+                
+            except:
+                continue
+
+        if state not in list(weather_d.keys()):
+            weather_d[state] = city_d
+        else:
+            weather_d[state].update(city_d)
     # print(weather_d)
     write_json(weatherfile, weather_d)
     return weather_d
+
+
+def process_health_data(healthfile_r, healthfile, two_city_d):
+    health_r = load_json(healthfile_r)
+    health_d = {}
+    count = 0
+    for h_city in health_r:
+        for i in two_city_d:
+            city_d = {}
+            # if h_city["stateabbr"] == i and h_city["placename"] in two_city_d[i].keys():
+            if h_city["stateabbr"] == i and h_city["placename"] in two_city_d[i].keys():
+                hd = {}
+                if "depression_crudeprev" in h_city.keys():
+                    hd["depression"] = float(h_city["depression_crudeprev"])
+                else:
+                    hd["depression"] = "null"
+
+                if "mhlth_crudeprev" in h_city.keys():
+                    hd["mh_not_good"] = float(h_city["mhlth_crudeprev"])
+                else:
+                    hd["mh_not_good"] = "null"
+
+                if "sleep_crudeprev" in h_city.keys():
+                    hd["sleep_less_7"] = float(h_city["sleep_crudeprev"])
+                else:
+                    hd["sleep_less_7"] = "null"
+
+                if "lpa_crudeprev" in h_city.keys():
+                    hd["no_leis_phy_act"] = float(h_city["lpa_crudeprev"])
+                else:
+                    hd["no_leis_phy_act"] = "null"
+
+                if h_city["placename"] not in city_d.keys():
+                    city_d[h_city["placename"]] = hd
+                elif h_city["stateabbr"] == "ME" and h_city["placename"] == "Portland":
+                    city_d["Portland"] = hd
+                elif h_city["stateabbr"] == "WV" and h_city["placename"] == "Charleston":
+                    city_d["Charleston"] = hd
+                elif h_city["stateabbr"] == "MD" and h_city["placename"] == "Columbia":
+                    city_d["Columbia"] = hd
+
+                if h_city["stateabbr"] not in health_d.keys():
+                    health_d[h_city["stateabbr"]] = city_d
+                else:
+                    health_d[h_city["stateabbr"]].update(city_d)
+    # print(health_d)
+    write_json(healthfile, health_d)
+    return health_d
 
 
 def open_database(db_name):
@@ -139,42 +198,108 @@ def open_database(db_name):
     return cur, conn
 
 
-def make_weather_table(filename, cur, conn):
-    '''Create weather table in the database'''
-    weather = load_json(filename)
-    cur.execute("CREATE TABLE IF NOT EXISTS Weather (id INTEGER PRIMARY KEY, city_name TEXT, temp FLOAT, pressure FLOAT, clouds FLOAT)")
+def make_state_city_table(filename, cur, conn):
+    loc = load_json(filename)
+    cur.execute("CREATE TABLE IF NOT EXISTS Location (city_id INTEGER PRIMARY KEY, city_name TEXT, state_abbr TEXT)")
+    for state in loc:
+        for city in loc[state]:
+            cur.execute('SELECT id FROM Weather WHERE city_name = ?', (city, ))
+            c_id = cur.fetchone()
+            cur.execute("INSERT OR IGNORE INTO Location (city_id, city_name, state_abbr) VALUES (?,?,?)", (c_id[0], city, state))
+    conn.commit()
 
-    lst2 = []
-    for city in weather:
-        city_n = city
-        temp = round(weather[city]["temp_medium"], 2)
-        pressure = round(weather[city]["pressure_medium"], 2)
-        clouds = round(weather[city]["clouds_medium"], 2)
-        lst2.append((city_n, temp, pressure, clouds))
+
+def make_state_table(filename, cur, conn):
+    loc = load_json(filename)
+    cur.execute("CREATE TABLE IF NOT EXISTS State (id INTEGER PRIMARY KEY, state_abbr TEXT)")
+    count = 0
+    for state in loc:
+        cur.execute("INSERT OR IGNORE INTO State (id, state_abbr) VALUES (?,?)", (count, state))
+        count += 1
+    conn.commit()
+
+def make_weather_table(filename, cur, conn):
+    weather = load_json(filename)
+    # cur.execute('''DROP TABLE IF EXISTS Weather''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS Weather (id INTEGER PRIMARY KEY, city_name TEXT, state_id INTEGER, 
+    temp FLOAT, pressure FLOAT, humidity FLOAT, clouds FLOAT)''')
+    # cur.execute('''CREATE TABLE IF NOT EXISTS Weather (id INTEGER PRIMARY KEY, city_name TEXT, state_id INTEGER, 
+    # temp FLOAT, pressure FLOAT, humidity FLOAT, clouds FLOAT)''')
     
+    #Determine how many rows are present in db currently
+    cur.execute('''SELECT COUNT(*) FROM Weather''')
+    num_rows = cur.fetchone()[0]
+
     cur.execute('''SELECT MAX(id) FROM Weather''')
     last_id = cur.fetchone()[0]
     if last_id is None:
-        last_id = 0
-
+       last_id = -1
     start_id = last_id +1
+
     #Set a limit to only allow 25 items to be added to the database each time the code is run
-    count = 0
-    for i in range(start_id, start_id+25):
-        if count >= 25:
+    items_adding = 0
+
+    for state in weather:
+        if num_rows>=100:
             break
-        cur.execute("INSERT OR IGNORE INTO Weather (id, city_name, temp, pressure, clouds) VALUES (?,?,?,?,?)",
-                    (i, lst2[i][0], lst2[i][1], lst2[i][2], lst2[i][3]))
-        count +=1
+        if items_adding >= 25:
+            break
+        for city in weather[state]:
+            if num_rows >= 100:
+                break
+            if items_adding >= 25:
+                break
+            city_n = city
+            temp = round(weather[state][city]["temp_medium"], 2)
+            ps = round(weather[state][city]["pressure_medium"], 2)
+            hum = round(weather[state][city]["humidity_medium"], 2)
+            clouds = round(weather[state][city]["clouds_medium"], 2)
+            cur.execute('SELECT id FROM State WHERE state_abbr = ?', (state, ))
+            state_id = cur.fetchone()
+            cur.execute("INSERT OR IGNORE INTO Weather (id, city_name, state_id, temp, pressure, humidity, clouds) VALUES (?,?,?,?,?,?,?)",
+                        (start_id, city_n, state_id[0], temp, ps, hum, clouds))    
+            items_adding += 1
+            num_rows += 1
+            start_id += 1
+    conn.commit()
+    if items_adding >= 25:
+        items_adding = 0
+
+
+def make_health_table(filename, cur, conn):
+    health = load_json(filename)
+    cur.execute('''DROP TABLE IF EXISTS Health''')
+    cur.execute('''CREATE TABLE Health (city_id INTEGER PRIMARY KEY, city_name TEXT, state_id INTEGER, 
+    depression FLOAT, mh_not_good FLOAT, sleep_less_7 FLOAT, no_leis_phy_act FLOAT)''')
+    # cur.execute("CREATE TABLE IF NOT EXISTS Health (city_id INTEGER PRIMARY KEY, depression FLOAT, mh_not_good FLOAT, sleep_less_7 FLOAT, no_leis_phy_act FLOAT)")
+    for state in health:
+        for city in health[state]:
+            city_n = city
+            dep = health[state][city]["depression"]
+            mh = health[state][city]["mh_not_good"]
+            sleep = health[state][city]["sleep_less_7"]
+            phy = health[state][city]["no_leis_phy_act"]
+        
+            cur.execute('SELECT id FROM Weather WHERE city_name = ?', (city_n, ))
+            c_id = cur.fetchone()
+            cur.execute('SELECT id FROM State WHERE state_abbr = ?', (state, ))
+            state_id = cur.fetchone()
+            cur.execute("INSERT OR IGNORE INTO Health (city_id, city_name, state_id, depression, mh_not_good, sleep_less_7, no_leis_phy_act) VALUES (?,?,?,?,?,?,?)", 
+                        (c_id[0], city_n, state_id[0], dep, mh, sleep, phy))
     conn.commit()
 
+
+
 def main():
-    two_city_d = get_lat("health_data_r.json", "location_data.json")
-    ##cache_weather_data(two_city_d, "weather_data_r.json")
-    ##cache_weather_data(two_city_d, "weather_month_data_r.json")  
-    process_weather_data("weather_data_r.json", "weather_data.json")
-    cur, conn = open_database("Mental_health_Test1.db")
+    two_city_d = get_lat("health_data_r.json", "coordinate.json")
+    ### cache_weather_data(two_city_d, "weather_data_raw.json")
+    process_weather_data("weather_data_raw.json", "weather_data.json")
+    process_health_data("health_data_r.json", "health_data.json", two_city_d)
+    cur, conn = open_database("Mental_health.db")
+    make_state_table("weather_data.json", cur, conn)
     make_weather_table("weather_data.json", cur, conn)
+    # make_health_table("health_data.json", cur, conn)
+    ### make_state_city_table("location_data.json", cur, conn)
 
 if __name__ == "__main__":
     main()
