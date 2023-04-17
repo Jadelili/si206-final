@@ -48,6 +48,7 @@ def cache_elevation_data(location_data, elevation_file):
             lat = round(coordinates[0], 3)
             lon = round(coordinates[1], 3)
             params = {"locations": f"{lat},{lon}"}
+            #TODO: dict for locations and lat//lon
             try:
                 result = get_api(f"{base_url}?locations={lat},{lon}", params=None)
                 if result:
